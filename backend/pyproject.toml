@@ -1,0 +1,16 @@
+[project]
+name = "learning-tracker-backend"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.129.0",
+    "orjson>=3.11.7",
+    "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.2.1",
+    "sqlalchemy[asyncio]>=2.0.46",
+    "uuid-utils>=0.14.0",
+    "uvicorn[standard]>=0.41.0",
+]
