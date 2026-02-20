@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_url", mode="before")
     @classmethod
-    def ensure_neon_ssl_mode(cls, value: str) -> str:
+    def normalise_database_url(cls, value: str) -> str:
         normalized = value.strip().strip('"').strip("'")
         if normalized.startswith("postgres://"):
             normalized = normalized.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -25,14 +25,17 @@ class Settings(BaseSettings):
         parsed = urlsplit(normalized)
         query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
 
-        # asyncpg does not accept sslmode; it expects ssl=require (or similar).
+        # asyncpg uses ssl= not sslmode=
         if "sslmode" in query_params:
             query_params["ssl"] = query_params.pop("sslmode")
 
         # libpq-specific option that asyncpg does not support.
         query_params.pop("channel_binding", None)
 
-        if "ssl" not in query_params:
+        # Only force SSL for remote (non-localhost) hosts.
+        host = parsed.hostname or ""
+        is_local = host in ("localhost", "127.0.0.1", "::1", "")
+        if not is_local and "ssl" not in query_params:
             query_params["ssl"] = "require"
 
         rebuilt = urlunsplit(

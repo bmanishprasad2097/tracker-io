@@ -122,15 +122,18 @@ function TaskPanel({
 
   return (
     <>
+      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[3px]" onClick={handleSave} />
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-        onClick={handleSave}
-      />
-      <div className="fixed right-0 top-0 h-full w-full max-w-sm z-50 bg-[#13131a] border-l border-[#1e1e2a] shadow-2xl flex flex-col animate-slide-in">
+        className="fixed right-0 top-0 h-full w-full max-w-sm z-50 flex flex-col animate-slide-in"
+        style={{ background: 'linear-gradient(180deg, #0c0c20 0%, #09091a 100%)', borderLeft: '1px solid #1a1a30', boxShadow: '-20px 0 60px #00000060' }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e1e2a]">
-          <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Task Details</span>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-600 hover:text-white hover:bg-white/10 transition-colors">
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #13132a' }}>
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#7880a8' }}>Task Details</span>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: '#7880a8' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#c0c0e0'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
             <X size={14} />
           </button>
         </div>
@@ -139,7 +142,7 @@ function TaskPanel({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Status */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-2 uppercase tracking-wider">Status</label>
+            <label className="block text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: '#7880a8' }}>Status</label>
             <div className="flex gap-2 flex-wrap">
               {STATUS_ORDER.map((s) => {
                 const cfg = STATUS_CONFIG[s];
@@ -147,15 +150,13 @@ function TaskPanel({
                 const active = status === s;
                 return (
                   <button
-                    key={s}
-                    onClick={() => setStatus(s)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                    key={s} onClick={() => setStatus(s)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                     style={active
-                      ? { color: cfg.color, borderColor: `${cfg.color}50`, backgroundColor: cfg.bg }
-                      : { color: '#475569', borderColor: '#1e1e2a' }}
+                      ? { color: cfg.color, borderColor: `${cfg.color}50`, backgroundColor: cfg.bg, border: `1px solid ${cfg.color}40`, boxShadow: `0 0 10px ${cfg.color}20` }
+                      : { color: '#3a3a5a', border: '1px solid #1a1a30' }}
                   >
-                    <Icon size={12} />
-                    {cfg.label}
+                    <Icon size={12} />{cfg.label}
                   </button>
                 );
               })}
@@ -164,42 +165,45 @@ function TaskPanel({
 
           {/* Title */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5 uppercase tracking-wider">Title</label>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: '#7880a8' }}>Title</label>
             <input
-              autoFocus
-              value={title}
+              autoFocus value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-              className="w-full bg-[#1a1a24] border border-[#1e1e2a] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/60 transition-colors"
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors"
+              style={{ background: '#0a0a1e', border: '1px solid #1a1a30' }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#6366f155')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#1a1a30')}
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1.5 uppercase tracking-wider">
+            <label className="flex items-center gap-1.5 text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: '#7880a8' }}>
               <FileText size={10} /> Notes
             </label>
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={6}
-              placeholder="Add notes, links, or anything relevant…"
-              className="w-full bg-[#1a1a24] border border-[#1e1e2a] rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/60 transition-colors resize-none leading-relaxed"
+              value={notes} onChange={(e) => setNotes(e.target.value)}
+              rows={6} placeholder="Add notes, links, or anything relevant…"
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors resize-none leading-relaxed"
+              style={{ background: '#0a0a1e', border: '1px solid #1a1a30', color: '#c0c0e0' }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#6366f155')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#1a1a30')}
             />
           </div>
 
           {/* Meta */}
-          <div className="pt-1 border-t border-[#1e1e2a] space-y-2">
+          <div className="pt-2 space-y-2" style={{ borderTop: '1px solid #13132a' }}>
             <div className="flex justify-between text-xs">
-              <span className="text-slate-700">Created</span>
-              <span className="text-slate-500">
+              <span style={{ color: '#5a6288' }}>Created</span>
+              <span style={{ color: '#8890b8' }}>
                 {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
             {task.completed_at && (
               <div className="flex justify-between text-xs">
-                <span className="text-slate-700">Completed</span>
-                <span className="text-emerald-500/80">
+                <span style={{ color: '#5a6288' }}>Completed</span>
+                <span style={{ color: '#34d39980' }}>
                   {new Date(task.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
@@ -208,20 +212,23 @@ function TaskPanel({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-[#1e1e2a] flex items-center gap-3">
-          <button
-            onClick={() => onDelete(task.id)}
-            className="p-2 rounded-lg text-slate-700 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          >
-            <Trash2 size={14} />
-          </button>
+        <div className="px-5 py-4 flex items-center gap-3" style={{ borderTop: '1px solid #13132a' }}>
+          <button           onClick={() => onDelete(task.id)}
+            className="p-2 rounded-lg transition-colors" style={{ color: '#6870a0' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          ><Trash2 size={14} /></button>
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2 rounded-xl bg-white/5 text-slate-400 text-sm hover:bg-white/10 transition-colors">
-            Discard
-          </button>
-          <button onClick={handleSave} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 transition-colors">
-            Save
-          </button>
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm transition-colors"
+            style={{ background: '#ffffff08', color: '#8890b8' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffffff12')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff08')}
+          >Discard</button>
+          <button onClick={handleSave}
+            className="px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', boxShadow: '0 4px 16px #6366f140' }}
+          >Save</button>
         </div>
       </div>
     </>
@@ -257,26 +264,36 @@ function TaskRow({
 }) {
   return (
     <div
-      className="group flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/[0.03] transition-colors cursor-pointer"
+      className="group flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all"
+      style={{ transition: 'background 0.15s' }}
       onClick={() => onOpenEdit(task)}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#ffffff04')}
+      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
     >
       <StatusCycler task={task} onUpdate={onStatusChange} />
-      <span className={`flex-1 text-sm leading-relaxed select-none transition-colors ${
-        task.status === 'completed' ? 'text-slate-600 line-through' : 'text-slate-200'
-      }`}>
+      <span
+        className="flex-1 text-sm leading-relaxed select-none"
+        style={{ color: task.status === 'completed' ? '#4a5278' : '#c8d0e8', textDecoration: task.status === 'completed' ? 'line-through' : 'none' }}
+      >
         {task.title}
       </span>
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {task.notes && <FileText size={11} className="text-slate-700" />}
+        {task.notes && <FileText size={11} style={{ color: '#6870a0' }} />}
         <button
           onClick={(e) => { e.stopPropagation(); onOpenEdit(task); }}
-          className="p-1 rounded text-slate-700 hover:text-slate-300 hover:bg-white/10 transition-colors"
+          className="p-1 rounded transition-colors"
+          style={{ color: '#6870a0' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#b0b8d8'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
         >
           <Pencil size={11} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="p-1 rounded text-slate-700 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          className="p-1 rounded transition-colors"
+          style={{ color: '#6870a0' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
         >
           <Trash2 size={11} />
         </button>
@@ -396,17 +413,23 @@ function TopicSection({
   };
 
   return (
-    <div className="bg-[#13131a] border border-[#1e1e2a] rounded-2xl">
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: 'linear-gradient(145deg, #0e0e22 0%, #0b0b1a 100%)', border: '1px solid #1a1a32' }}
+    >
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3.5">
-        <button onClick={() => setCollapsed((v) => !v)} className="p-0.5 text-slate-700 hover:text-slate-400 transition-colors shrink-0">
+        <button onClick={() => setCollapsed((v) => !v)} className="p-0.5 transition-colors shrink-0" style={{ color: '#5a6288' }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#a0a8c8')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#5a6288')}
+        >
           {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
             <span className="text-sm font-semibold text-white truncate">{topic.title}</span>
             {topic.total_tasks > 0 && (
-              <span className="text-xs text-slate-700 shrink-0 tabular-nums">
+              <span className="text-xs shrink-0 tabular-nums" style={{ color: '#7880a8' }}>
                 {topic.completed_tasks}/{topic.total_tasks}
               </span>
             )}
@@ -420,13 +443,19 @@ function TopicSection({
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => { setAddingTask(true); if (collapsed) setCollapsed(false); }}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-600 hover:text-white hover:bg-white/10 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-colors"
+            style={{ color: '#7880a8' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#c0c8e8'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#7880a8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             <Plus size={12} /> Add Task
           </button>
           <button
             onClick={() => { if (confirm(`Delete "${topic.title}" and all its tasks?`)) deleteTopicMutation.mutate(); }}
-            className="p-1.5 rounded-lg text-slate-800 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: '#4a5278' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#4a5278'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             <Trash2 size={12} />
           </button>
@@ -437,11 +466,13 @@ function TopicSection({
       {!collapsed && (
         <div className="px-2 pb-2">
           {topic.tasks.length === 0 && !addingTask && (
-            <p className="text-xs text-slate-700 text-center py-3">
+            <p className="text-xs text-center py-3" style={{ color: '#6870a0' }}>
               No tasks —{' '}
-              <button className="text-indigo-500 hover:text-indigo-400 transition-colors" onClick={() => setAddingTask(true)}>
-                add one
-              </button>
+              <button className="transition-colors" style={{ color: '#6366f1' }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#818cf8')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#6366f1')}
+                onClick={() => setAddingTask(true)}
+              >add one</button>
             </p>
           )}
 
@@ -458,7 +489,8 @@ function TopicSection({
           {/* Inline add */}
           {addingTask && (
             <form
-              className="flex items-center gap-2.5 px-4 py-2.5 mt-1 rounded-xl border border-[#1e1e2a] bg-white/[0.02]"
+              className="flex items-center gap-2.5 px-4 py-2.5 mt-1 rounded-xl"
+              style={{ border: '1px solid #1a1a30', background: '#ffffff03' }}
               onSubmit={(e) => { e.preventDefault(); if (newTaskTitle.trim()) createTaskMutation.mutate(newTaskTitle.trim()); }}
             >
               <Circle size={15} className="text-slate-700 shrink-0" />
@@ -600,7 +632,10 @@ export default function RoadmapDetail() {
       {/* Back */}
       <button
         onClick={() => navigate('/roadmaps')}
-        className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-white mb-7 transition-colors group"
+        className="flex items-center gap-1.5 text-sm mb-7 transition-colors group"
+        style={{ color: '#7880a8' }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#d0d4f0')}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#7880a8')}
       >
         <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
         All Roadmaps
@@ -621,7 +656,7 @@ export default function RoadmapDetail() {
       </div>
 
       {/* Stats bar */}
-      <div className="flex items-center gap-5 py-4 mb-6 border-b border-[#1e1e2a]">
+      <div className="flex items-center gap-5 py-4 mb-6" style={{ borderBottom: '1px solid #13132a' }}>
         <div className="flex items-center gap-2.5">
           <div className="w-36">
             <ProgressBar value={roadmap.progress_percent} color={roadmap.color} />
@@ -630,12 +665,12 @@ export default function RoadmapDetail() {
             {roadmap.progress_percent.toFixed(0)}%
           </span>
         </div>
-        <span className="text-sm text-slate-600 tabular-nums shrink-0">
+        <span className="text-sm tabular-nums shrink-0" style={{ color: '#8890b8' }}>
           {roadmap.completed_tasks}/{roadmap.total_tasks} done
         </span>
         {roadmap.in_progress_tasks > 0 && (
-          <span className="flex items-center gap-1.5 text-xs text-blue-500/70 shrink-0">
-            <span className="w-1 h-1 rounded-full bg-blue-500" />
+          <span className="flex items-center gap-1.5 text-xs shrink-0" style={{ color: '#60a5fa80' }}>
+            <span className="w-1 h-1 rounded-full" style={{ background: '#60a5fa' }} />
             {roadmap.in_progress_tasks} in progress
           </span>
         )}
@@ -644,9 +679,9 @@ export default function RoadmapDetail() {
       {/* Topics */}
       <div className="space-y-3">
         {roadmap.topics.length === 0 && !addingTopic && (
-          <div className="text-center py-14 text-slate-700">
+          <div className="text-center py-14" style={{ color: '#6870a0' }}>
             <p className="text-sm">No topics yet</p>
-            <p className="text-xs mt-1">Add a topic to start organizing your tasks</p>
+            <p className="text-xs mt-1 opacity-70">Add a topic below to start organizing your tasks</p>
           </div>
         )}
 
@@ -662,7 +697,8 @@ export default function RoadmapDetail() {
 
         {addingTopic ? (
           <form
-            className="bg-[#13131a] border border-indigo-500/30 rounded-2xl px-4 py-3.5 flex items-center gap-3"
+            className="rounded-2xl px-4 py-3.5 flex items-center gap-3"
+            style={{ background: '#0e0e22', border: '1px solid #6366f130' }}
             onSubmit={(e) => { e.preventDefault(); if (newTopicTitle.trim()) createTopicMutation.mutate(newTopicTitle.trim()); }}
           >
             <input
@@ -683,7 +719,10 @@ export default function RoadmapDetail() {
         ) : (
           <button
             onClick={() => setAddingTopic(true)}
-            className="flex items-center gap-2 w-full px-4 py-3.5 border border-dashed border-[#1e1e2a] rounded-2xl text-sm text-slate-700 hover:text-slate-400 hover:border-[#2a2a3a] transition-colors"
+            className="flex items-center gap-2 w-full px-4 py-3.5 rounded-2xl text-sm transition-colors"
+            style={{ border: '1px dashed #2a2a4a', color: '#7880a8' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#b0b8d8'; (e.currentTarget as HTMLElement).style.borderColor = '#4a4a70'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#7880a8'; (e.currentTarget as HTMLElement).style.borderColor = '#2a2a4a'; }}
           >
             <Plus size={13} /> Add Topic
           </button>

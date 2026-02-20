@@ -1,25 +1,18 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50:  #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
-
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background-color: #0d0d12;
-  color: #e2e8f0;
+  background-color: #070710;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 15% -10%, #1e0a4a33 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 85% 100%, #0a1a4a22 0%, transparent 60%);
+  background-attachment: fixed;
+  color: #d4d8f0;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -28,23 +21,73 @@ body {
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #252535; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #333345; }
+::-webkit-scrollbar-thumb { background: #1f1f38; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #2a2a4a; }
 
-/* Slide-in panel animation */
+/* ── Animations ─────────────────────────────────────────────────── */
 @keyframes slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
-.animate-slide-in {
-  animation: slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
+.animate-slide-in { animation: slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* Fade in */
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in {
-  animation: fade-in 0.15s ease-out;
+.animate-fade-up { animation: fade-up 0.2s ease-out; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in { animation: fade-in 0.15s ease-out; }
+
+/* ── Glass card ─────────────────────────────────────────────────── */
+.glass {
+  background: linear-gradient(135deg, #0e0e22 0%, #0b0b1c 100%);
+  border: 1px solid #1c1c36;
+  backdrop-filter: blur(8px);
+}
+.glass-hover {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.glass-hover:hover {
+  border-color: #2e2e5a;
+  box-shadow: 0 0 0 1px #2e2e5a40, 0 8px 40px #6366f10c;
+}
+
+/* ── Glow progress bar ──────────────────────────────────────────── */
+.progress-glow {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ── Gradient text ──────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Stat card glass variants ───────────────────────────────────── */
+.stat-indigo {
+  background: linear-gradient(135deg, #1a1a3e 0%, #0e0e28 100%);
+  border: 1px solid #3030601a;
+  box-shadow: inset 0 1px 0 #6366f115;
+}
+.stat-violet {
+  background: linear-gradient(135deg, #1c1433 0%, #0e0a22 100%);
+  border: 1px solid #5020601a;
+  box-shadow: inset 0 1px 0 #8b5cf615;
+}
+.stat-emerald {
+  background: linear-gradient(135deg, #0f2422 0%, #09181a 100%);
+  border: 1px solid #1060501a;
+  box-shadow: inset 0 1px 0 #10b98115;
+}
+.stat-amber {
+  background: linear-gradient(135deg, #251a0a 0%, #18110a 100%);
+  border: 1px solid #60401010;
+  box-shadow: inset 0 1px 0 #f59e0b15;
 }
