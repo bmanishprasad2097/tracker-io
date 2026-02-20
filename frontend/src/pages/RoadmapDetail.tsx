@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Plus, Circle, Clock, CheckCircle2, Trash2,
-  ChevronDown, ChevronRight, Pencil, X, FileText,
+  ChevronDown, ChevronRight, X, FileText,
 } from 'lucide-react';
 import { getRoadmap } from '../api/roadmaps';
 import { createTopic, deleteTopic } from '../api/topics';
@@ -12,665 +12,609 @@ import type { RoadmapDetail, Task, TaskStatus, Topic } from '../types';
 import ProgressBar from '../components/ProgressBar';
 
 /* ─── Cache helpers ──────────────────────────────────────────────── */
-
-function recalcTopic(topic: Topic): Topic {
-  const done = topic.tasks.filter((t) => t.status === 'completed').length;
-  return {
-    ...topic,
-    total_tasks: topic.tasks.length,
-    completed_tasks: done,
-    progress_percent: topic.tasks.length > 0 ? (done / topic.tasks.length) * 100 : 0,
-  };
+function recalcTopic(t: Topic): Topic {
+  const done = t.tasks.filter((x) => x.status === 'completed').length;
+  return { ...t, total_tasks: t.tasks.length, completed_tasks: done, progress_percent: t.tasks.length > 0 ? (done / t.tasks.length) * 100 : 0 };
 }
-
 function recalcRoadmap(r: RoadmapDetail): RoadmapDetail {
-  const allTasks  = r.topics.flatMap((t) => t.tasks);
-  const done      = allTasks.filter((t) => t.status === 'completed').length;
-  const inProg    = allTasks.filter((t) => t.status === 'in_progress').length;
-  return {
-    ...r,
-    total_tasks:        allTasks.length,
-    completed_tasks:    done,
-    in_progress_tasks:  inProg,
-    progress_percent:   allTasks.length > 0 ? (done / allTasks.length) * 100 : 0,
-  };
+  const all = r.topics.flatMap((t) => t.tasks);
+  const done = all.filter((x) => x.status === 'completed').length;
+  const inProg = all.filter((x) => x.status === 'in_progress').length;
+  return { ...r, total_tasks: all.length, completed_tasks: done, in_progress_tasks: inProg, progress_percent: all.length > 0 ? (done / all.length) * 100 : 0 };
 }
-
-function patchTaskInCache(
-  old: RoadmapDetail | undefined,
-  taskId: string,
-  patch: Partial<Task>,
-): RoadmapDetail | undefined {
+function patchTask(old: RoadmapDetail | undefined, id: string, patch: Partial<Task>): RoadmapDetail | undefined {
   if (!old) return old;
-  const topics = old.topics.map((topic) => {
-    const tasks = topic.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t));
-    return recalcTopic({ ...topic, tasks });
-  });
-  return recalcRoadmap({ ...old, topics });
+  return recalcRoadmap({ ...old, topics: old.topics.map((t) => recalcTopic({ ...t, tasks: t.tasks.map((x) => x.id === id ? { ...x, ...patch } : x) })) });
 }
-
-function removeTaskFromCache(
-  old: RoadmapDetail | undefined,
-  taskId: string,
-): RoadmapDetail | undefined {
+function removeTask(old: RoadmapDetail | undefined, id: string): RoadmapDetail | undefined {
   if (!old) return old;
-  const topics = old.topics.map((topic) => {
-    const tasks = topic.tasks.filter((t) => t.id !== taskId);
-    return recalcTopic({ ...topic, tasks });
-  });
-  return recalcRoadmap({ ...old, topics });
+  return recalcRoadmap({ ...old, topics: old.topics.map((t) => recalcTopic({ ...t, tasks: t.tasks.filter((x) => x.id !== id) })) });
 }
-
-function addTaskToCache(
-  old: RoadmapDetail | undefined,
-  topicId: string,
-  task: Task,
-): RoadmapDetail | undefined {
+function addTask(old: RoadmapDetail | undefined, topicId: string, task: Task): RoadmapDetail | undefined {
   if (!old) return old;
-  const topics = old.topics.map((topic) => {
-    if (topic.id !== topicId) return topic;
-    return recalcTopic({ ...topic, tasks: [...topic.tasks, task] });
-  });
-  return recalcRoadmap({ ...old, topics });
+  return recalcRoadmap({ ...old, topics: old.topics.map((t) => t.id !== topicId ? t : recalcTopic({ ...t, tasks: [...t.tasks, task] })) });
 }
-
-function removeTopicFromCache(
-  old: RoadmapDetail | undefined,
-  topicId: string,
-): RoadmapDetail | undefined {
+function removeTopic(old: RoadmapDetail | undefined, id: string): RoadmapDetail | undefined {
   if (!old) return old;
-  const topics = old.topics.filter((t) => t.id !== topicId);
-  return recalcRoadmap({ ...old, topics });
+  return recalcRoadmap({ ...old, topics: old.topics.filter((t) => t.id !== id) });
 }
-
-function addTopicToCache(
-  old: RoadmapDetail | undefined,
-  topic: Topic,
-): RoadmapDetail | undefined {
+function addTopic(old: RoadmapDetail | undefined, topic: Topic): RoadmapDetail | undefined {
   if (!old) return old;
   return recalcRoadmap({ ...old, topics: [...old.topics, topic] });
 }
 
 /* ─── Status config ──────────────────────────────────────────────── */
-
-const STATUS_CONFIG: Record<TaskStatus, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  not_started: { label: 'Not started', icon: Circle,       color: '#64748b', bg: '#64748b15' },
-  in_progress: { label: 'In progress', icon: Clock,        color: '#3b82f6', bg: '#3b82f615' },
-  completed:   { label: 'Completed',   icon: CheckCircle2, color: '#10b981', bg: '#10b98115' },
+const STATUS: Record<TaskStatus, { label: string; icon: React.ElementType; color: string }> = {
+  not_started: { label: 'Not started', icon: Circle,       color: '#6e7681' },
+  in_progress: { label: 'In progress', icon: Clock,        color: '#58a6ff' },
+  completed:   { label: 'Completed',   icon: CheckCircle2, color: '#3fb950' },
 };
-
 const STATUS_ORDER: TaskStatus[] = ['not_started', 'in_progress', 'completed'];
 
-/* ─── Task edit slide panel ─────────────────────────────────────── */
-
-function TaskPanel({
-  task, onClose, onSave, onDelete,
+/* ─── Inline Task Card ───────────────────────────────────────────── */
+// Three states: collapsed row → view card → edit card
+function TaskCard({
+  task,
+  isOpen,
+  onOpen,
+  onClose,
+  onStatusCycle,
+  onSave,
+  onDelete,
 }: {
   task: Task;
+  isOpen: boolean;
+  onOpen: () => void;
   onClose: () => void;
-  onSave: (id: string, patch: Partial<Task>) => void;
-  onDelete: (id: string) => void;
+  onStatusCycle: (s: TaskStatus) => void;
+  onSave: (patch: Partial<Task>) => void;
+  onDelete: () => void;
 }) {
-  const [title,  setTitle]  = useState(task.title);
-  const [notes,  setNotes]  = useState(task.notes ?? '');
-  const [status, setStatus] = useState<TaskStatus>(task.status);
+  const [editing, setEditing] = useState(false);
+  const [title,   setTitle]   = useState(task.title);
+  const [notes,   setNotes]   = useState(task.notes ?? '');
+  const [status,  setStatus]  = useState<TaskStatus>(task.status);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  // When the card opens (view mode), reset editing state.
+  // When closed, always exit edit mode too.
+  useEffect(() => {
+    if (!isOpen) { setEditing(false); }
+  }, [isOpen]);
+
+  const enterEdit = () => {
+    setTitle(task.title);
+    setNotes(task.notes ?? '');
+    setStatus(task.status);
+    setEditing(true);
+    setTimeout(() => titleRef.current?.focus(), 0);
+  };
 
   const handleSave = () => {
-    onSave(task.id, { title: title.trim(), notes: notes.trim() || undefined, status });
+    onSave({ title: title.trim() || task.title, notes: notes.trim() || undefined, status });
+    setEditing(false);
     onClose();
   };
 
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[3px]" onClick={handleSave} />
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setEditing(false); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { handleSave(); }
+  };
+
+  const cfg        = STATUS[task.status];
+  const Icon       = cfg.icon;
+  const nextStatus = STATUS_ORDER[(STATUS_ORDER.indexOf(task.status) + 1) % STATUS_ORDER.length];
+
+  // ── Collapsed row ────────────────────────────────────────────────
+  if (!isOpen) {
+    return (
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-sm z-50 flex flex-col animate-slide-in"
-        style={{ background: 'linear-gradient(180deg, #0c0c20 0%, #09091a 100%)', borderLeft: '1px solid #1a1a30', boxShadow: '-20px 0 60px #00000060' }}
+        className="group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer"
+        onClick={onOpen}
+        onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--bg-subtle)'}
+        onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #13132a' }}>
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#7880a8' }}>Task Details</span>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: '#7880a8' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#c0c0e0'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          >
-            <X size={14} />
-          </button>
+        <button
+          className="shrink-0 p-0.5 rounded transition-transform hover:scale-110 active:scale-95"
+          title={`Mark as ${STATUS[nextStatus].label}`}
+          onClick={(e) => { e.stopPropagation(); onStatusCycle(nextStatus); }}
+        >
+          <Icon size={16} style={{ color: cfg.color }} />
+        </button>
+
+        <span
+          className="flex-1 text-sm leading-relaxed select-none"
+          style={{
+            color: task.status === 'completed' ? 'var(--text-disabled)' : 'var(--text-primary)',
+            textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+          }}
+        >
+          {task.title}
+        </span>
+
+        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          {task.notes && <FileText size={12} style={{ color: 'var(--text-disabled)' }} />}
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>view</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Expanded — Edit mode ─────────────────────────────────────────
+  if (editing) {
+    return (
+      <div
+        className="rounded-xl my-1 animate-fade-up"
+        style={{ background: 'var(--bg-subtle)', border: '1px solid var(--accent-border)' }}
+        onKeyDown={handleEditKeyDown}
+      >
+        {/* Status picker */}
+        <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+          <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Status</span>
+          <div className="flex gap-2">
+            {STATUS_ORDER.map((s) => {
+              const c = STATUS[s]; const SIcon = c.icon; const active = status === s;
+              return (
+                <button key={s} onClick={() => setStatus(s)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+                  style={active
+                    ? { background: `${c.color}20`, color: c.color, border: `1px solid ${c.color}40` }
+                    : { color: 'var(--text-muted)', background: 'transparent', border: '1px solid transparent' }
+                  }
+                  onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'; }}
+                  onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <SIcon size={13} />{c.label}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setEditing(false)} className="ml-auto p-1.5 rounded transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
+          ><X size={14} /></button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Status */}
-          <div>
-            <label className="block text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: '#7880a8' }}>Status</label>
-            <div className="flex gap-2 flex-wrap">
-              {STATUS_ORDER.map((s) => {
-                const cfg = STATUS_CONFIG[s];
-                const Icon = cfg.icon;
-                const active = status === s;
-                return (
-                  <button
-                    key={s} onClick={() => setStatus(s)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={active
-                      ? { color: cfg.color, borderColor: `${cfg.color}50`, backgroundColor: cfg.bg, border: `1px solid ${cfg.color}40`, boxShadow: `0 0 10px ${cfg.color}20` }
-                      : { color: '#3a3a5a', border: '1px solid #1a1a30' }}
-                  >
-                    <Icon size={12} />{cfg.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {/* Title */}
+        <div className="px-4 pb-3">
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full bg-transparent text-base font-semibold focus:outline-none"
+            style={{ color: 'var(--text-primary)' }}
+            placeholder="Task title…"
+          />
+        </div>
 
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: '#7880a8' }}>Title</label>
-            <input
-              autoFocus value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-              className="w-full rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors"
-              style={{ background: '#0a0a1e', border: '1px solid #1a1a30' }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = '#6366f155')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = '#1a1a30')}
-            />
+        {/* Notes */}
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <FileText size={13} style={{ color: 'var(--text-muted)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Notes</span>
           </div>
-
-          {/* Notes */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: '#7880a8' }}>
-              <FileText size={10} /> Notes
-            </label>
-            <textarea
-              value={notes} onChange={(e) => setNotes(e.target.value)}
-              rows={6} placeholder="Add notes, links, or anything relevant…"
-              className="w-full rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors resize-none leading-relaxed"
-              style={{ background: '#0a0a1e', border: '1px solid #1a1a30', color: '#c0c0e0' }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = '#6366f155')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = '#1a1a30')}
-            />
-          </div>
-
-          {/* Meta */}
-          <div className="pt-2 space-y-2" style={{ borderTop: '1px solid #13132a' }}>
-            <div className="flex justify-between text-xs">
-              <span style={{ color: '#5a6288' }}>Created</span>
-              <span style={{ color: '#8890b8' }}>
-                {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
-            </div>
-            {task.completed_at && (
-              <div className="flex justify-between text-xs">
-                <span style={{ color: '#5a6288' }}>Completed</span>
-                <span style={{ color: '#34d39980' }}>
-                  {new Date(task.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-              </div>
-            )}
-          </div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Add notes, links, or anything useful… (Ctrl+Enter to save)"
+            className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none resize-none leading-relaxed transition-colors"
+            style={{
+              background: 'var(--bg-default)',
+              border: '1px solid var(--border-muted)',
+              color: 'var(--text-secondary)',
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--border-default)')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-muted)')}
+          />
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 flex items-center gap-3" style={{ borderTop: '1px solid #13132a' }}>
-          <button           onClick={() => onDelete(task.id)}
-            className="p-2 rounded-lg transition-colors" style={{ color: '#6870a0' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          ><Trash2 size={14} /></button>
-          <div className="flex-1" />
-          <button onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm transition-colors"
-            style={{ background: '#ffffff08', color: '#8890b8' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffffff12')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff08')}
-          >Discard</button>
-          <button onClick={handleSave}
-            className="px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', boxShadow: '0 4px 16px #6366f140' }}
-          >Save</button>
+        <div className="flex items-center justify-between px-4 py-3"
+          style={{ borderTop: '1px solid var(--border-muted)' }}>
+          <button onClick={() => { if (confirm('Delete this task?')) onDelete(); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--danger)'; (e.currentTarget as HTMLElement).style.background = 'var(--danger-subtle)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          ><Trash2 size={14} /> Delete</button>
+
+          <div className="flex items-center gap-2">
+            <button onClick={() => setEditing(false)}
+              className="px-3 py-1.5 rounded-md text-sm transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            >Cancel</button>
+            <button onClick={handleSave}
+              className="px-4 py-1.5 rounded-md text-sm font-medium text-white transition-opacity hover:opacity-90"
+              style={{ background: 'var(--accent)' }}
+            >Save <kbd className="ml-1 opacity-60 font-mono text-xs">⌘↵</kbd></button>
+          </div>
         </div>
       </div>
-    </>
-  );
-}
+    );
+  }
 
-/* ─── Status Cycler ─────────────────────────────────────────────── */
-
-function StatusCycler({ task, onUpdate }: { task: Task; onUpdate: (s: TaskStatus) => void }) {
-  const next = STATUS_ORDER[(STATUS_ORDER.indexOf(task.status) + 1) % STATUS_ORDER.length];
-  const cfg  = STATUS_CONFIG[task.status];
-  const Icon = cfg.icon;
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onUpdate(next); }}
-      className="shrink-0 p-0.5 rounded transition-transform hover:scale-110 active:scale-95"
-      title={`Mark as ${STATUS_CONFIG[next].label}`}
-    >
-      <Icon size={17} style={{ color: cfg.color }} />
-    </button>
-  );
-}
-
-/* ─── Task Row ──────────────────────────────────────────────────── */
-
-function TaskRow({
-  task, onStatusChange, onOpenEdit, onDelete,
-}: {
-  task: Task;
-  onStatusChange: (s: TaskStatus) => void;
-  onOpenEdit: (t: Task) => void;
-  onDelete: () => void;
-}) {
+  // ── Expanded — View mode ─────────────────────────────────────────
   return (
     <div
-      className="group flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer transition-all"
-      style={{ transition: 'background 0.15s' }}
-      onClick={() => onOpenEdit(task)}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#ffffff04')}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+      className="rounded-xl my-1 animate-fade-up"
+      style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)' }}
     >
-      <StatusCycler task={task} onUpdate={onStatusChange} />
-      <span
-        className="flex-1 text-sm leading-relaxed select-none"
-        style={{ color: task.status === 'completed' ? '#4a5278' : '#c8d0e8', textDecoration: task.status === 'completed' ? 'line-through' : 'none' }}
+      {/* Header: clickable title area collapses, status cycles, edit button */}
+      <div
+        className="group flex items-center gap-3 px-4 pt-4 pb-3 cursor-pointer"
+        onClick={onClose}
+        onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'}
+        onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        style={{ borderRadius: '0.75rem 0.75rem 0 0' }}
       >
-        {task.title}
-      </span>
-      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        {task.notes && <FileText size={11} style={{ color: '#6870a0' }} />}
+        {/* Status badge — clicking cycles status without collapsing */}
         <button
-          onClick={(e) => { e.stopPropagation(); onOpenEdit(task); }}
-          className="p-1 rounded transition-colors"
-          style={{ color: '#6870a0' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#b0b8d8'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          title={`Mark as ${STATUS[nextStatus].label}`}
+          onClick={(e) => { e.stopPropagation(); onStatusCycle(nextStatus); }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium transition-all shrink-0 hover:opacity-80 active:scale-95"
+          style={{ background: `${cfg.color}18`, color: cfg.color }}
         >
-          <Pencil size={11} />
+          <Icon size={13} />{cfg.label}
         </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="p-1 rounded transition-colors"
-          style={{ color: '#6870a0' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6870a0'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+
+        {/* Title — click area is the collapse trigger */}
+        <p
+          className="flex-1 text-base font-semibold leading-snug select-none"
+          style={{
+            color: task.status === 'completed' ? 'var(--text-secondary)' : 'var(--text-primary)',
+            textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+          }}
         >
-          <Trash2 size={11} />
-        </button>
+          {task.title}
+        </p>
+
+        {/* Right actions */}
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={enterEdit}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            Edit
+          </button>
+          <button onClick={onClose} className="p-1.5 rounded-md transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
+          ><X size={14} /></button>
+        </div>
       </div>
+
+      {/* Notes */}
+      {task.notes ? (
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <FileText size={13} style={{ color: 'var(--text-muted)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Notes</span>
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+            {task.notes}
+          </p>
+        </div>
+      ) : (
+        <div className="px-4 pb-4">
+          <button
+            onClick={enterEdit}
+            className="flex items-center gap-1.5 text-sm transition-colors"
+            style={{ color: 'var(--text-disabled)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-disabled)')}
+          >
+            <FileText size={13} /> Add notes…
+          </button>
+        </div>
+      )}
+
+      {/* Footer: metadata */}
+      {task.completed_at && (
+        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--border-muted)' }}>
+          <span className="text-sm" style={{ color: 'var(--text-disabled)' }}>
+            Completed {new Date(task.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── Topic Section ─────────────────────────────────────────────── */
-
 function TopicSection({
-  topic, color, roadmapId, onEditTask,
+  topic, color, roadmapId,
+  onSaveTask, onDeleteTask,
 }: {
-  topic: Topic;
-  color: string;
-  roadmapId: string;
-  onEditTask: (t: Task) => void;
+  topic: Topic; color: string; roadmapId: string;
+  onSaveTask: (taskId: string, patch: Partial<Task>) => void;
+  onDeleteTask: (taskId: string) => void;
 }) {
   const qc = useQueryClient();
-  const [collapsed, setCollapsed]       = useState(false);
-  const [addingTask, setAddingTask]     = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [collapsed,     setCollapsed]     = useState(false);
+  const [addingTask,    setAddingTask]    = useState(false);
+  const [newTaskTitle,  setNewTaskTitle]  = useState('');
+  const [openTaskId,    setOpenTaskId]    = useState<string | null>(null);
 
-  // Snapshot + restore helpers
-  const snap = useCallback(() => qc.getQueryData<RoadmapDetail>(['roadmap', roadmapId]), [qc, roadmapId]);
-  const restore = useCallback((prev: RoadmapDetail | undefined) => {
-    qc.setQueryData(['roadmap', roadmapId], prev);
-  }, [qc, roadmapId]);
-  const settle = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['roadmap', roadmapId] });
-  }, [qc, roadmapId]);
+  const snap    = useCallback(() => qc.getQueryData<RoadmapDetail>(['roadmap', roadmapId]), [qc, roadmapId]);
+  const restore = useCallback((p: RoadmapDetail | undefined) => qc.setQueryData(['roadmap', roadmapId], p), [qc, roadmapId]);
+  const settle  = useCallback(() => qc.invalidateQueries({ queryKey: ['roadmap', roadmapId] }), [qc, roadmapId]);
 
-  /* Update task status — fully optimistic */
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
-      updateTask(id, { status }),
+    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => updateTask(id, { status }),
     onMutate: async ({ id, status }) => {
       await qc.cancelQueries({ queryKey: ['roadmap', roadmapId] });
       const prev = snap();
-      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) =>
-        patchTaskInCache(old, id, { status })
-      );
+      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) => patchTask(old, id, { status }));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
-    onSettled: settle,
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
-  /* Delete task — fully optimistic */
-  const deleteTaskMutation = useMutation({
-    mutationFn: (id: string) => deleteTask(id),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['roadmap', roadmapId] });
-      const prev = snap();
-      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) =>
-        removeTaskFromCache(old, id)
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => restore(ctx?.prev),
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-  });
-
-  /* Create task — optimistic (temp placeholder) */
   const createTaskMutation = useMutation({
     mutationFn: (title: string) => createTask(topic.id, { title }),
     onMutate: async (title) => {
       await qc.cancelQueries({ queryKey: ['roadmap', roadmapId] });
       const prev = snap();
-      const tempTask: Task = {
-        id: `temp-${Date.now()}`,
-        topic_id: topic.id,
-        title,
-        notes: null,
-        status: 'not_started',
-        sort_order: 999,
-        completed_at: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) =>
-        addTaskToCache(old, topic.id, tempTask)
-      );
+      const temp: Task = { id: `temp-${Date.now()}`, topic_id: topic.id, title, notes: null, status: 'not_started', sort_order: 999, completed_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) => addTask(old, topic.id, temp));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
     onSuccess: () => { setNewTaskTitle(''); setAddingTask(false); },
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
-  /* Delete topic — optimistic */
   const deleteTopicMutation = useMutation({
     mutationFn: () => deleteTopic(topic.id),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: ['roadmap', roadmapId] });
       const prev = snap();
-      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) =>
-        removeTopicFromCache(old, topic.id)
-      );
+      qc.setQueryData<RoadmapDetail>(['roadmap', roadmapId], (old) => removeTopic(old, topic.id));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
-  const handleDelete = (taskId: string) => {
-    if (confirm('Delete this task?')) deleteTaskMutation.mutate(taskId);
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTaskTitle.trim()) createTaskMutation.mutate(newTaskTitle.trim());
   };
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'linear-gradient(145deg, #0e0e22 0%, #0b0b1a 100%)', border: '1px solid #1a1a32' }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3.5">
-        <button onClick={() => setCollapsed((v) => !v)} className="p-0.5 transition-colors shrink-0" style={{ color: '#5a6288' }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#a0a8c8')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#5a6288')}
-        >
-          {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5">
-            <span className="text-sm font-semibold text-white truncate">{topic.title}</span>
-            {topic.total_tasks > 0 && (
-              <span className="text-xs shrink-0 tabular-nums" style={{ color: '#7880a8' }}>
-                {topic.completed_tasks}/{topic.total_tasks}
-              </span>
-            )}
-          </div>
+    <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-default)', border: '1px solid var(--border-default)' }}>
+      {/* ── Topic Header — entire row is clickable ────────────────── */}
+      <div
+        className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none transition-colors"
+        onClick={() => setCollapsed((v) => !v)}
+        onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--bg-subtle)'}
+        onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+      >
+        <span style={{ color: 'var(--text-muted)' }} className="shrink-0">
+          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        </span>
+
+        <div className="flex-1 min-w-0 flex items-center gap-2.5">
+          <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+            {topic.title}
+          </span>
+          {topic.total_tasks > 0 && (
+            <span className="text-xs tabular-nums shrink-0" style={{ color: 'var(--text-muted)' }}>
+              {topic.completed_tasks}/{topic.total_tasks}
+            </span>
+          )}
           {!collapsed && topic.total_tasks > 1 && (
-            <div className="mt-2 w-28">
+            <div className="w-20 shrink-0" onClick={(e) => e.stopPropagation()}>
               <ProgressBar value={topic.progress_percent} color={color} size="sm" />
             </div>
           )}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+
+        {/* Action buttons — stopPropagation to avoid triggering collapse */}
+        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => { setAddingTask(true); if (collapsed) setCollapsed(false); }}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-colors"
-            style={{ color: '#7880a8' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#c0c8e8'; (e.currentTarget as HTMLElement).style.background = '#ffffff0a'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#7880a8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-overlay)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             <Plus size={12} /> Add Task
           </button>
           <button
             onClick={() => { if (confirm(`Delete "${topic.title}" and all its tasks?`)) deleteTopicMutation.mutate(); }}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ color: '#4a5278' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#f87171'; (e.currentTarget as HTMLElement).style.background = '#ff000012'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#4a5278'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            className="p-1.5 rounded-md transition-colors"
+            style={{ color: 'var(--text-disabled)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--danger)'; (e.currentTarget as HTMLElement).style.background = 'var(--danger-subtle)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-disabled)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             <Trash2 size={12} />
           </button>
         </div>
       </div>
 
-      {/* Task list */}
+      {/* ── Task list ─────────────────────────────────────────────── */}
       {!collapsed && (
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-2" style={{ borderTop: '1px solid var(--border-muted)' }}>
           {topic.tasks.length === 0 && !addingTask && (
-            <p className="text-xs text-center py-3" style={{ color: '#6870a0' }}>
+            <p className="text-xs text-center py-3" style={{ color: 'var(--text-disabled)' }}>
               No tasks —{' '}
-              <button className="transition-colors" style={{ color: '#6366f1' }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#818cf8')}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#6366f1')}
+              <button
+                style={{ color: 'var(--accent-hover)' }}
                 onClick={() => setAddingTask(true)}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
               >add one</button>
             </p>
           )}
 
-          {topic.tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              onStatusChange={(s) => updateStatusMutation.mutate({ id: task.id, status: s })}
-              onOpenEdit={onEditTask}
-              onDelete={() => handleDelete(task.id)}
-            />
-          ))}
+          <div className="mt-1 space-y-0.5">
+            {topic.tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                isOpen={openTaskId === task.id}
+                onOpen={() => setOpenTaskId(task.id)}
+                onClose={() => setOpenTaskId(null)}
+                onStatusCycle={(s) => updateStatusMutation.mutate({ id: task.id, status: s })}
+                onSave={(patch) => { onSaveTask(task.id, patch); }}
+                onDelete={() => { onDeleteTask(task.id); setOpenTaskId(null); }}
+              />
+            ))}
+          </div>
 
-          {/* Inline add */}
+          {/* Inline add task form */}
           {addingTask && (
-            <form
-              className="flex items-center gap-2.5 px-4 py-2.5 mt-1 rounded-xl"
-              style={{ border: '1px solid #1a1a30', background: '#ffffff03' }}
-              onSubmit={(e) => { e.preventDefault(); if (newTaskTitle.trim()) createTaskMutation.mutate(newTaskTitle.trim()); }}
+            <form onSubmit={handleAddTask}
+              className="flex items-center gap-2 px-3 py-2 mt-1 rounded-lg"
+              style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)' }}
             >
-              <Circle size={15} className="text-slate-700 shrink-0" />
+              <Circle size={14} style={{ color: 'var(--text-disabled)' }} className="shrink-0" />
               <input
                 autoFocus
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 placeholder="Task title…"
-                className="flex-1 bg-transparent text-sm text-white placeholder-slate-700 focus:outline-none min-w-0"
+                className="flex-1 bg-transparent text-sm focus:outline-none min-w-0"
+                style={{ color: 'var(--text-primary)' }}
                 onKeyDown={(e) => e.key === 'Escape' && setAddingTask(false)}
               />
-              <button
-                type="submit"
-                disabled={!newTaskTitle.trim()}
-                className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs hover:bg-indigo-500 disabled:opacity-40 transition-colors shrink-0"
-              >
-                Add
+              <button type="submit" disabled={!newTaskTitle.trim()}
+                className="px-2.5 py-1 rounded-md text-xs font-medium text-white disabled:opacity-40 shrink-0"
+                style={{ background: 'var(--accent)' }}>
+                {createTaskMutation.isPending ? '…' : 'Add'}
               </button>
-              <button type="button" onClick={() => { setAddingTask(false); setNewTaskTitle(''); }} className="p-1 rounded text-slate-600 hover:text-slate-300 transition-colors">
+              <button type="button" onClick={() => { setAddingTask(false); setNewTaskTitle(''); }}
+                className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>
                 <X size={13} />
               </button>
             </form>
           )}
         </div>
       )}
-
-      {/* Edit panel scoped to topic so we can pass the right mutation */}
-      {/* (rendered at page level via onEditTask callback) */}
     </div>
   );
 }
 
 /* ─── Page ──────────────────────────────────────────────────────── */
-
-export default function RoadmapDetail() {
+export default function RoadmapDetailPage() {
   const { id }   = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc       = useQueryClient();
 
   const [addingTopic,   setAddingTopic]   = useState(false);
   const [newTopicTitle, setNewTopicTitle] = useState('');
-  const [editingTask,   setEditingTask]   = useState<Task | null>(null);
 
   const { data: roadmap, isLoading, isError } = useQuery({
-    queryKey: ['roadmap', id],
-    queryFn:  () => getRoadmap(id!),
-    enabled:  !!id,
+    queryKey: ['roadmap', id], queryFn: () => getRoadmap(id!), enabled: !!id,
   });
 
   const snap    = () => qc.getQueryData<RoadmapDetail>(['roadmap', id]);
-  const restore = (prev: RoadmapDetail | undefined) => qc.setQueryData(['roadmap', id], prev);
+  const restore = (p: RoadmapDetail | undefined) => qc.setQueryData(['roadmap', id], p);
   const settle  = () => qc.invalidateQueries({ queryKey: ['roadmap', id] });
 
-  /* Create topic — optimistic */
   const createTopicMutation = useMutation({
     mutationFn: (title: string) => createTopic(id!, { title }),
     onMutate: async (title) => {
       await qc.cancelQueries({ queryKey: ['roadmap', id] });
       const prev = snap();
-      const tempTopic: Topic = {
-        id: `temp-${Date.now()}`,
-        roadmap_id: id!,
-        title,
-        description: null,
-        sort_order: 999,
-        tasks: [],
-        total_tasks: 0,
-        completed_tasks: 0,
-        progress_percent: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) => addTopicToCache(old, tempTopic));
+      const temp: Topic = { id: `temp-${Date.now()}`, roadmap_id: id!, title, description: null, sort_order: 999, tasks: [], total_tasks: 0, completed_tasks: 0, progress_percent: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) => addTopic(old, temp));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
     onSuccess: () => { setNewTopicTitle(''); setAddingTopic(false); },
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
-  /* Save task from panel — optimistic */
   const saveTaskMutation = useMutation({
     mutationFn: ({ taskId, patch }: { taskId: string; patch: Partial<Task> }) =>
       updateTask(taskId, { ...patch, notes: patch.notes ?? undefined }),
     onMutate: async ({ taskId, patch }) => {
       await qc.cancelQueries({ queryKey: ['roadmap', id] });
       const prev = snap();
-      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) =>
-        patchTaskInCache(old, taskId, patch)
-      );
+      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) => patchTask(old, taskId, patch));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
-  /* Delete task from panel — optimistic */
   const deleteTaskMutation = useMutation({
     mutationFn: (taskId: string) => deleteTask(taskId),
     onMutate: async (taskId) => {
       await qc.cancelQueries({ queryKey: ['roadmap', id] });
       const prev = snap();
-      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) =>
-        removeTaskFromCache(old, taskId)
-      );
+      qc.setQueryData<RoadmapDetail>(['roadmap', id], (old) => removeTask(old, taskId));
       return { prev };
     },
     onError: (_e, _v, ctx) => restore(ctx?.prev),
-    onSuccess: () => setEditingTask(null),
-    onSettled: () => {
-      settle();
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
+    onSettled: () => { settle(); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
   });
 
   if (isLoading) {
     return (
       <div className="p-8 max-w-3xl space-y-4 animate-pulse">
-        <div className="h-5 w-28 bg-white/5 rounded-lg" />
-        <div className="h-7 w-52 bg-white/5 rounded-xl mt-5" />
-        <div className="h-px bg-white/5 my-5" />
-        {[1, 2, 3].map((i) => <div key={i} className="h-28 bg-white/5 rounded-2xl" />)}
+        <div className="h-4 w-28 rounded" style={{ background: 'var(--bg-subtle)' }} />
+        <div className="h-7 w-52 rounded mt-5" style={{ background: 'var(--bg-subtle)' }} />
+        <div className="h-px my-5" style={{ background: 'var(--border-muted)' }} />
+        {[1, 2, 3].map((i) => <div key={i} className="h-28 rounded-xl" style={{ background: 'var(--bg-default)' }} />)}
       </div>
     );
   }
 
   if (isError || !roadmap) {
-    return <div className="p-8 text-sm text-red-400">Failed to load roadmap.</div>;
+    return <div className="p-8 text-sm" style={{ color: 'var(--danger)' }}>Failed to load roadmap.</div>;
   }
 
   return (
     <div className="p-8 max-w-3xl">
       {/* Back */}
-      <button
-        onClick={() => navigate('/roadmaps')}
+      <button onClick={() => navigate('/roadmaps')}
         className="flex items-center gap-1.5 text-sm mb-7 transition-colors group"
-        style={{ color: '#7880a8' }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#d0d4f0')}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#7880a8')}
+        style={{ color: 'var(--text-muted)' }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
       >
         <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
         All Roadmaps
       </button>
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0"
-          style={{ backgroundColor: `${roadmap.color}18`, color: roadmap.color }}
-        >
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0"
+          style={{ background: `${roadmap.color}22`, color: roadmap.color }}>
           {roadmap.title.charAt(0).toUpperCase()}
         </div>
         <div>
-          <h1 className="text-xl font-bold text-white leading-tight">{roadmap.title}</h1>
-          {roadmap.description && <p className="text-slate-500 text-sm mt-0.5">{roadmap.description}</p>}
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{roadmap.title}</h1>
+          {roadmap.description && <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>{roadmap.description}</p>}
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div className="flex items-center gap-5 py-4 mb-6" style={{ borderBottom: '1px solid #13132a' }}>
+      {/* Stats */}
+      <div className="flex items-center gap-5 py-4 mb-6" style={{ borderBottom: '1px solid var(--border-muted)' }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-36">
-            <ProgressBar value={roadmap.progress_percent} color={roadmap.color} />
-          </div>
-          <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: roadmap.color }}>
+          <div className="w-32"><ProgressBar value={roadmap.progress_percent} color={roadmap.color} /></div>
+          <span className="text-sm font-semibold tabular-nums" style={{ color: roadmap.color }}>
             {roadmap.progress_percent.toFixed(0)}%
           </span>
         </div>
-        <span className="text-sm tabular-nums shrink-0" style={{ color: '#8890b8' }}>
+        <span className="text-sm tabular-nums" style={{ color: 'var(--text-secondary)' }}>
           {roadmap.completed_tasks}/{roadmap.total_tasks} done
         </span>
         {roadmap.in_progress_tasks > 0 && (
-          <span className="flex items-center gap-1.5 text-xs shrink-0" style={{ color: '#60a5fa80' }}>
-            <span className="w-1 h-1 rounded-full" style={{ background: '#60a5fa' }} />
+          <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--info)' }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--info)' }} />
             {roadmap.in_progress_tasks} in progress
           </span>
         )}
@@ -679,9 +623,9 @@ export default function RoadmapDetail() {
       {/* Topics */}
       <div className="space-y-3">
         {roadmap.topics.length === 0 && !addingTopic && (
-          <div className="text-center py-14" style={{ color: '#6870a0' }}>
+          <div className="text-center py-14" style={{ color: 'var(--text-muted)' }}>
             <p className="text-sm">No topics yet</p>
-            <p className="text-xs mt-1 opacity-70">Add a topic below to start organizing your tasks</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-disabled)' }}>Add a topic below to start organizing your tasks</p>
           </div>
         )}
 
@@ -691,58 +635,42 @@ export default function RoadmapDetail() {
             topic={topic}
             color={roadmap.color}
             roadmapId={roadmap.id}
-            onEditTask={setEditingTask}
+            onSaveTask={(taskId, patch) => saveTaskMutation.mutate({ taskId, patch })}
+            onDeleteTask={(taskId) => deleteTaskMutation.mutate(taskId)}
           />
         ))}
 
-        {addingTopic ? (
-          <form
-            className="rounded-2xl px-4 py-3.5 flex items-center gap-3"
-            style={{ background: '#0e0e22', border: '1px solid #6366f130' }}
-            onSubmit={(e) => { e.preventDefault(); if (newTopicTitle.trim()) createTopicMutation.mutate(newTopicTitle.trim()); }}
-          >
-            <input
-              autoFocus
-              value={newTopicTitle}
-              onChange={(e) => setNewTopicTitle(e.target.value)}
-              placeholder="Topic title…"
-              className="flex-1 bg-transparent text-sm text-white placeholder-slate-600 focus:outline-none"
-              onKeyDown={(e) => e.key === 'Escape' && setAddingTopic(false)}
-            />
-            <button type="submit" disabled={!newTopicTitle.trim()} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs hover:bg-indigo-500 disabled:opacity-40 transition-colors shrink-0">
-              Add Topic
+        {/* Add Topic */}
+        {addingTopic
+          ? <form onSubmit={(e) => { e.preventDefault(); if (newTopicTitle.trim()) createTopicMutation.mutate(newTopicTitle.trim()); }}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl"
+              style={{ background: 'var(--bg-default)', border: '1px solid var(--accent-border)' }}>
+              <input autoFocus value={newTopicTitle} onChange={(e) => setNewTopicTitle(e.target.value)}
+                placeholder="Topic title…"
+                className="flex-1 bg-transparent text-sm focus:outline-none"
+                style={{ color: 'var(--text-primary)' }}
+                onKeyDown={(e) => e.key === 'Escape' && setAddingTopic(false)}
+              />
+              <button type="submit" disabled={!newTopicTitle.trim()}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+                style={{ background: 'var(--accent)' }}>
+                {createTopicMutation.isPending ? '…' : 'Add Topic'}
+              </button>
+              <button type="button" onClick={() => { setAddingTopic(false); setNewTopicTitle(''); }}
+                className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>
+                <X size={13} />
+              </button>
+            </form>
+          : <button onClick={() => setAddingTopic(true)}
+              className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm transition-colors"
+              style={{ border: '1px dashed var(--border-default)', color: 'var(--text-muted)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-subtle)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
+              <Plus size={14} /> Add Topic
             </button>
-            <button type="button" onClick={() => { setAddingTopic(false); setNewTopicTitle(''); }} className="p-1 rounded text-slate-600 hover:text-slate-300 transition-colors">
-              <X size={13} />
-            </button>
-          </form>
-        ) : (
-          <button
-            onClick={() => setAddingTopic(true)}
-            className="flex items-center gap-2 w-full px-4 py-3.5 rounded-2xl text-sm transition-colors"
-            style={{ border: '1px dashed #2a2a4a', color: '#7880a8' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#b0b8d8'; (e.currentTarget as HTMLElement).style.borderColor = '#4a4a70'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#7880a8'; (e.currentTarget as HTMLElement).style.borderColor = '#2a2a4a'; }}
-          >
-            <Plus size={13} /> Add Topic
-          </button>
-        )}
+        }
       </div>
-
-      {/* Task edit panel — rendered at page level, outside any clipping */}
-      {editingTask && (
-        <TaskPanel
-          task={editingTask}
-          onClose={() => setEditingTask(null)}
-          onSave={(taskId, patch) => {
-            saveTaskMutation.mutate({ taskId, patch });
-            setEditingTask(null);
-          }}
-          onDelete={(taskId) => {
-            if (confirm('Delete this task?')) deleteTaskMutation.mutate(taskId);
-          }}
-        />
-      )}
     </div>
   );
 }
